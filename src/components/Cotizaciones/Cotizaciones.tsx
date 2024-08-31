@@ -84,71 +84,140 @@ const Cotizaciones: React.FC = () => {
     setItems(newItems);
   };
 
+  // Eliminar un producto de la cotización
+  const removeItem = (index: number) => {
+    const newItems = items.filter((_, i) => i !== index);
+    setItems(newItems);
+  };
+
   // Calcular el subtotal de la cotización
   const calculateSubtotal = () => {
     return items.reduce((total, item) => total + item.total, 0);
   };
 
-  // Generar un PDF con el diseño personalizado
   const generatePDF = (data: any) => {
     const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.width;
 
     // Agregar el encabezado
-    doc.addImage(headerImage, "JPEG", 10, 10, 190, 40);
+    doc.addImage(headerImage, "JPEG", 0, 0, pageWidth, 60); // Ajusta la altura de la imagen a 60
 
     // Espacio después del encabezado
     doc.setFontSize(10);
-    doc.text(`CLIENTE: ${data.cliente}`, 10, 60);
-    doc.text(`PRESUPUESTO: ${data.presupuesto}`, 10, 70);
-    doc.text(`FECHA: ${new Date(data.fecha).toLocaleDateString()}`, 10, 80);
-    doc.text("DESCRIPCIÓN:", 10, 90);
-    doc.text(data.descripcion, 10, 100);
 
-    // Tabla de productos
-    const tableColumn = ["CANT.", "DESCRIPCIÓN", "P. UNITARIO", "TOTAL"];
-    const tableRows: any[] = [];
+    // Posición de "CLIENTE" y "PRESUPUESTO"
+    const startY = 70; // Ajustar la altura inicial
 
-    data.items.forEach((item: CotizacionItem) => {
-      const productoData = [
-        item.cantidad.toString(),
-        item.nombre,
-        `$${item.precioUnitario.toFixed(2)}`,
-        `$${item.total.toFixed(2)}`,
-      ];
-      tableRows.push(productoData);
+    // Cliente
+    doc.setFont("helvetica", "bold");
+    doc.text(`CLIENTE: ${data.cliente}`, 10, startY);
+
+    // Presupuesto alineado a la derecha
+    doc.text(`PRESUPUESTO: ${data.presupuesto}`, pageWidth - 10, startY, {
+      align: "right",
     });
 
-    doc.autoTable({
-      startY: 110,
-      head: [tableColumn],
-      body: tableRows,
-      theme: "grid",
-      headStyles: { fillColor: [0, 0, 0] },
-      bodyStyles: { valign: "middle" },
-      styles: { fontSize: 10, cellPadding: 3 },
-      margin: { top: 70 },
+    // Fecha
+    doc.text(
+      `FECHA: ${new Date(data.fecha).toLocaleDateString()}`,
+      10,
+      startY + 8
+    );
+
+    // Agregar el texto adicional al mismo nivel de la fecha
+    doc.text(
+      "LOS PRECIOS ESTAN SUJETOS A CAMBIOS COMERCIALES",
+      pageWidth - 10,
+      startY + 8,
+      { align: "right" }
+    );
+
+    // Descripción
+    doc.text("DESCRIPCIÓN:", 10, startY + 16);
+    doc.text(data.descripcion, 10, startY + 24);
+
+    // Función para agregar la tabla de productos
+    const addTable = (startY: number, items: CotizacionItem[]) => {
+      const tableColumn = ["CANT.", "DESCRIPCIÓN", "P. UNITARIO", "TOTAL"];
+      const tableRows: any[] = [];
+
+      items.forEach((item: CotizacionItem) => {
+        const productoData = [
+          item.cantidad.toString(),
+          item.nombre,
+          `$${item.precioUnitario.toFixed(2)}`,
+          `$${item.total.toFixed(2)}`,
+        ];
+        tableRows.push(productoData);
+      });
+
+      doc.autoTable({
+        startY: startY,
+        head: [tableColumn],
+        body: tableRows,
+        theme: "grid",
+        headStyles: { fillColor: [55, 23, 10], lineWidth: 0 },
+        bodyStyles: { valign: "middle", lineWidth: 0 },
+        styles: { fontSize: 10, cellPadding: 1, cellWidth: "auto" },
+        margin: { left: 0, right: 0 },
+      });
+    };
+
+    // Dividir los productos en grupos de 22 para paginación
+    const maxItemsPerPage = 22;
+    let currentY = startY + 25;
+    const itemsChunks = [];
+
+    for (let i = 0; i < data.items.length; i += maxItemsPerPage) {
+      itemsChunks.push(data.items.slice(i, i + maxItemsPerPage));
+    }
+
+    // Agregar las páginas con las tablas
+    itemsChunks.forEach((chunk, pageIndex) => {
+      if (pageIndex > 0) {
+        doc.addPage();
+      }
+
+      // Agregar la tabla de productos
+      addTable(currentY, chunk);
+
+      // Dibujar línea separadora debajo de la tabla
+      const tableFinalY = doc.lastAutoTable.finalY;
+      doc.setDrawColor(150, 75, 0); // Color marrón
+      doc.setLineWidth(1); // Grosor de la línea
+      doc.line(10, tableFinalY + 10, pageWidth - 10, tableFinalY + 10); // Línea horizontal
+
+      // Ajustar la posición para el pie de página
+      currentY = doc.internal.pageSize.height - 30;
     });
 
-    // Subtotal, Mano de Obra y Total
+    // Subtotal, Mano de Obra y Total alineados a la derecha
     const subtotal = data.subtotal;
     const total = subtotal + (data.manoDeObra || 0);
-    const subtotalY = doc.lastAutoTable.finalY + 10;
-    doc.text(`SUBTOTAL: $${subtotal.toFixed(2)}`, 10, subtotalY);
+    const footerY = doc.internal.pageSize.height - 40;
+
+    doc.setFont("helvetica", "bold");
+    doc.text(`SUBTOTAL: $${subtotal.toFixed(2)}`, pageWidth - 10, footerY - 5, {
+      align: "right",
+    });
     doc.text(
       `MANO DE OBRA: $${(data.manoDeObra || 0).toFixed(2)}`,
-      10,
-      subtotalY + 10
+      pageWidth - 10,
+      footerY - 0,
+      { align: "right" }
     );
-    doc.text(`TOTAL: $${total.toFixed(2)}`, 10, subtotalY + 20);
+    doc.text(`TOTAL: $${total.toFixed(2)}`, pageWidth - 10, footerY - -5, {
+      align: "right",
+    });
 
     // Agregar el pie de página
     doc.addImage(
       footerImage,
       "JPEG",
-      10,
-      doc.internal.pageSize.height - 50,
-      190,
-      40
+      0,
+      doc.internal.pageSize.height - 30,
+      pageWidth,
+      30
     );
 
     doc.save("cotizacion.pdf");
@@ -182,93 +251,110 @@ const Cotizaciones: React.FC = () => {
   };
 
   return (
-    <div className="container">
-      <h1>Cotizaciones</h1>
+    <div className="cotizaciones">
       <form onSubmit={handleSubmit}>
         <div className="form-group">
-          <label className="label">Cliente:</label>
+          <label htmlFor="cliente">Cliente</label>
           <input
             type="text"
+            id="cliente"
             value={cliente}
             onChange={(e) => setCliente(e.target.value)}
             required
           />
         </div>
         <div className="form-group">
-          <label className="label">Presupuesto:</label>
+          <label htmlFor="presupuesto">Presupuesto</label>
           <input
-            type="text"
+            type="number"
+            id="presupuesto"
             value={presupuesto}
             onChange={(e) => setPresupuesto(Number(e.target.value))}
             required
           />
         </div>
         <div className="form-group">
-          <label className="label">Fecha:</label>
+          <label htmlFor="fecha">Fecha</label>
           <input
             type="date"
+            id="fecha"
             value={fecha}
             onChange={(e) => setFecha(e.target.value)}
             required
           />
         </div>
         <div className="form-group">
-          <label className="label">Descripción:</label>
-          <input
-            type="text"
+          <label htmlFor="descripcion">Descripción</label>
+          <textarea
+            id="descripcion"
             value={descripcion}
             onChange={(e) => setDescripcion(e.target.value)}
           />
         </div>
         <div className="form-group">
-          <label className="label">Mano de Obra:</label>
+          <label htmlFor="manoDeObra">Mano de Obra</label>
           <input
             type="number"
+            id="manoDeObra"
             value={manoDeObra}
             onChange={(e) => setManoDeObra(Number(e.target.value))}
           />
         </div>
         <div className="form-group">
-          <h3>Buscar Producto</h3>
+          <label htmlFor="producto">Buscar producto</label>
           <input
             type="text"
-            placeholder="Nombre del producto"
+            id="producto"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
-          {suggestions.length > 0 && (
-            <ul className="suggestions">
-              {suggestions.map((producto) => (
-                <li key={producto.id} onClick={() => addItem(producto)}>
-                  {producto.nombre} - ${producto.precio.toFixed(2)}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-        <div className="form-group">
-          <h3>Productos en la Cotización</h3>
-          <div className="product-list">
-            {items.map((item, index) => (
-              <div key={index} className="product-item">
-                <span>{item.nombre}</span>
-                <input
-                  type="number"
-                  value={item.cantidad}
-                  onChange={(e) =>
-                    updateItemQuantity(index, Number(e.target.value))
-                  }
-                  min="1"
-                />
-                <span>Total: ${item.total.toFixed(2)}</span>
-              </div>
+          <ul className="suggestions">
+            {suggestions.map((producto) => (
+              <li key={producto.id} onClick={() => addItem(producto)}>
+                {producto.nombre} - ${producto.precio}
+              </li>
             ))}
-          </div>
+          </ul>
         </div>
-        <div className="form-group">
-          <h3>Subtotal: ${calculateSubtotal().toFixed(2)}</h3>
+        <div className="cotizacion-items">
+          <h3>Productos en Cotización</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Descripción</th>
+                <th>Cantidad</th>
+                <th>Precio Unitario</th>
+                <th>Total</th>
+                <th>Acción</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item, index) => (
+                <tr key={item.productoId}>
+                  <td>{item.nombre}</td>
+                  <td>
+                    <input
+                      type="number"
+                      value={item.cantidad}
+                      onChange={(e) =>
+                        updateItemQuantity(index, Number(e.target.value))
+                      }
+                      min="1"
+                    />
+                  </td>
+                  <td>${item.precioUnitario.toFixed(2)}</td>
+                  <td>${item.total.toFixed(2)}</td>
+                  <td>
+                    <button type="button" onClick={() => removeItem(index)}>
+                      Eliminar
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-        <button type="submit">Crear Cotización</button>
+        <button type="submit">Generar Cotización</button>
       </form>
     </div>
   );
