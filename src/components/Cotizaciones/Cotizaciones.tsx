@@ -44,6 +44,14 @@ const Cotizaciones: React.FC = () => {
   const [descripcion, setDescripcion] = useState("");
   const [manoDeObra, setManoDeObra] = useState<number>(0);
 
+  // Estado para almacenar el subtotal de los productos
+  const [subtotal, setSubtotal] = useState(0);
+
+  // Función para calcular el subtotal de los productos
+  const calculateSubtotal = () => {
+    return items.reduce((total, item) => total + item.total, 0);
+  };
+
   // Buscar productos por nombre
   useEffect(() => {
     if (searchTerm.length > 0) {
@@ -61,6 +69,12 @@ const Cotizaciones: React.FC = () => {
       setSuggestions([]);
     }
   }, [searchTerm]);
+
+  // Recalcular el subtotal cada vez que cambien los items
+  useEffect(() => {
+    const newSubtotal = calculateSubtotal();
+    setSubtotal(newSubtotal);
+  }, [items]);
 
   // Añadir un nuevo producto a la cotización
   const addItem = (producto: Producto) => {
@@ -88,11 +102,6 @@ const Cotizaciones: React.FC = () => {
   const removeItem = (index: number) => {
     const newItems = items.filter((_, i) => i !== index);
     setItems(newItems);
-  };
-
-  // Calcular el subtotal de la cotización
-  const calculateSubtotal = () => {
-    return items.reduce((total, item) => total + item.total, 0);
   };
 
   const generatePDF = (data: any) => {
@@ -226,7 +235,7 @@ const Cotizaciones: React.FC = () => {
   // Manejar el envío del formulario
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    const subtotal = calculateSubtotal();
+    const subtotal = calculateSubtotal(); // Usa la función para calcular el subtotal
     const cotizacion = {
       cliente,
       presupuesto: Number(presupuesto),
@@ -317,7 +326,7 @@ const Cotizaciones: React.FC = () => {
           </ul>
         </div>
         <div className="cotizacion-items">
-          <h3>Productos en Cotización</h3>
+          <h3>Productos en Cotización (Total: ${subtotal.toFixed(2)})</h3>
           <table>
             <thead>
               <tr>
